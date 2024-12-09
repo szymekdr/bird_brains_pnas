@@ -1,0 +1,350 @@
+---
+title: "Brain size viz"
+author: "szymek drobniak"
+date: "3/19/2021"
+output: rmdformats::robobook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Packages
+
+(Note: not all packages are needed for this segment of code, i.e., for visualisation)
+
+```{r, message = F}
+rm(list = ls())
+# setwd
+
+require(phylolm)
+require(ape)
+require(caper)
+require(geiger)  
+require(phylopath)
+# require(gmm)
+require(lme4)
+require(magrittr)
+require(dplyr)
+require(ggplot2)
+require(MuMIn)
+require (VIF)
+require(ggpubr)
+library(ggrepel)
+
+require(MCMCglmm)
+
+library(asreml)
+
+library(ggtree)
+library(ggtreeExtra)
+library(ggnewscale)
+library(RColorBrewer)
+```
+
+## 2. Load data (using external scripts)
+
+The below code loads the comparative brain data, associated moderators and performs robust PCA analysis of climatic variables. In the last step rename rows of the data to species IDs. The plots produced in the process are parts of the data summarising process, mostly summaries of PC components rotations. *Note: this step can be bypassed by loading the `.Rdata` file containing the image of workspace, point (4) below.*
+
+```{r, message = F}
+source(file = 'data_load_plotting.R')
+phylo_vcv <- vcv.phylo(birdtree.Jetz, corr = T)
+source('climatic.R')
+rownames(birds) <- birds$tip_label
+```
+
+## 3. Clean and prepare final tree
+
+The tree gets loaded via the `data_load_plotting.R` script, the below code removes one duplicated species (*Parus minor* which is treated as *Parus major* in Jetz et al. taxonomy), it also removes zero-length branches (introducing lengths below the tolerance threshold of ultrameric tree), and trimms the tree to only the species from the main dataset.
+
+```{r}
+birds <- birds[-794,]
+tree_jetz_data <- birdtree.Jetz
+head(sort(tree_jetz_data$edge.length)) # check branch lengths
+tree_jetz_data$edge.length[tree_jetz_data$edge.length == 0] <- 1e-10
+
+Ntip(tree_jetz_data)
+
+# generate final tree
+tree_final <- drop.tip(tree_jetz_data, setdiff(tree_jetz_data$tip.label, birds$tip_label))
+```
+
+## 4. Recreate the workspace without loading the above files
+
+**If you want to avoid loading the above - just load this workspace to have all necessary data ready.**
+```{r}
+# load("vis.Rdata")
+```
+
+## 5. Plot the tree
+
+Define colour palette to colour the terminal branches according to Prum et al.'s super-orders.
+```{r, out.width = "800 px"}
+# colour palette generation
+set3 <- colorRampPalette((brewer.pal('Set3', n = 12)))
+
+# assign taxonomic orders to colours + assign internal nodes (no data) to gray
+colours <- c(setNames(set3(15), levels(birds$Prum_order)), Internal = "gray50")
+orders <- colours[c(as.character(birds[tree_final$tip.label, "Prum_order"]),
+            rep("Internal", 1174))]
+```
+
+Generate initial tree and label tree tips according to the developmental mode.
+
+```{r, out.width = "800 px"}
+# generate base tree
+p <- ggtree(tree_final, layout = "circular", color = orders)
+
+# add tree data and tip points
+p <- p %<+% birds + new_scale("color") +
+  scale_color_manual(values = c("cornflowerblue", "darkorange"), name = "Development mode") +
+  geom_tippoint(aes(color = devo_mode), size = 0.5)
+```
+
+Add bar plots of circularly generated data depicting residual brain size and body weight. The data rings are offset relative to default positions to make them more aesthetically pleasing. Both `geom_fruit()` calls define the `x` axis, which becomes the *radial* axis on the circular layout. The problem with it is that it is almost impossible to twek/scale/increase size so that it looks good on a tree with this data density - I usually edit it afterwards in Illustrator to make it more visible and readable. Axes can be removed by deleting the `axis.params = ...` statements.
+```{r, out.width = "800 px"}
+
+# add bars representing residual brain size coloured by time of feeding and body weight
+p1 <- p + geom_fruit(geom = geom_bar, 
+                     mapping = aes(x = res_brain, fill = time_fed),
+                     axis.params = list(axis = "x"),
+                     stat = 'identity', orientation = 'y', offset = 0.15) +
+  geom_fruit(geom = geom_bar, mapping = aes(x = weight), axis.params = list(axis = "x"),
+             stat = 'identity', orientation = 'y', offset = -0.01, fill = "gray74") +
+  scale_fill_gradientn(colors = c('limegreen', 'gold', 'maroon2'), name = "Time fed [log days]")
+
+plot(p1)
+# the code below saves the PDF
+# ggsave(filename = "vis_tree_210226.pdf", device = 'pdf')
+```
+
+## 6. Multipanel figure of brain size correlates from models
+
+Below code generates the multipanel plots of moderators. Each block defines a custom colour scale congruent with the tree development mode scale, modifies the ggplot2 theme to align it with Nature journals figure guidelines. The four plots are then bound together in one figure.
+
+```{r, fig.height = 8}
+text_size <- 15
+line_size <- 0.5
+tick_length <- unit(7, 'pt')
+text_colour <- 'black'
+plot1 <- birds %>%
+  ggplot(aes(x = time_fed, y = res_brain, color = devo_mode)) +
+  geom_point(size = 2, alpha = 0.3) +
+  geom_smooth(method = 'lm') +
+  scale_color_manual(values = c('#d55e00', '#3db7e9')) +
+  labs(x = "Ln(time fed + 1)", y = "Residual of ln(brain size)", color = 'Developmental mode') +
+  theme_classic() +
+  theme(text = element_text(size = text_size, family = "Helvetica", colour = text_colour),
+        axis.line = element_line(size = line_size, lineend = 'square'),
+        axis.ticks = element_line(size = line_size),
+        axis.ticks.length = tick_length,
+        axis.text = element_text(colour = text_colour),
+        legend.position = 'bottom')
+#plot1
+
+plot2 <- birds %>%
+  ggplot(aes(x = clutch_size, y = res_brain, color = devo_mode)) +
+  geom_point(size = 2, alpha = 0.3) +
+  geom_smooth(method = 'lm') +
+  scale_color_manual(values = c('#d55e00', '#3db7e9')) +
+  labs(x = "Ln(clutch size)", y = "Residual of ln(brain size)", color = 'Developmental mode') +
+  theme_classic() +
+  theme(text = element_text(size = text_size, family = "Helvetica", colour = text_colour),
+        axis.line = element_line(size = line_size, lineend = 'square'),
+        axis.ticks = element_line(size = line_size),
+        axis.ticks.length = tick_length,
+        axis.text = element_text(colour = text_colour),
+        legend.position = 'bottom')
+#plot2
+
+plot3 <- birds %>%
+  ggplot(aes(x = move_max, y = res_brain)) +
+  geom_boxplot(fill = 'gray80') +
+  scale_x_discrete(limits = levels(birds$move_max), labels = c('Migratory', 'Sedentary')) + 
+  labs(x = "Migratory status", y = "Residual of ln(brain size)", color = 'Developmental mode') +
+  theme_classic() +
+  theme(text = element_text(size = text_size, family = "Helvetica", colour = text_colour),
+        axis.line = element_line(size = line_size, lineend = 'square'),
+        axis.ticks = element_line(size = line_size),
+        axis.ticks.length = tick_length,
+        axis.text = element_text(colour = text_colour),
+        legend.position = 'bottom')
+#plot3
+
+plot4 <- birds %>%
+  ggplot(aes(x = foraging_3, y = res_brain)) +
+  geom_boxplot(fill = 'gray80') +
+  scale_x_discrete(limits = levels(birds$foraging_3), labels = c('Other', 'Arboreal')) + 
+  labs(x = "Foraging substrate",y = "Residual of ln(brain size)", color = 'Developmental mode') +
+  theme_classic() +
+  theme(text = element_text(size = text_size, family = "Helvetica", colour = text_colour),
+        axis.line = element_line(size = line_size, lineend = 'square'),
+        axis.ticks = element_line(size = line_size),
+        axis.ticks.length = tick_length,
+        axis.text = element_text(colour = text_colour),
+        legend.position = 'bottom')
+#plot4
+
+ggarrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2, common.legend = T, legend = 'top',
+          labels = "auto")
+# ggsave(filename = "vis_gridplot_210225.pdf", device = 'pdf', scale = 0.8)
+```
+
+The below produces supplementary plot of food PCA - it works similarly to the above segment.
+
+```{r, fig.height = 8}
+plot5 <- birds %>%
+  ggplot(aes(x = time_fed, y = res_brain, color = devo_mode_full)) +
+  geom_point(size = 2, alpha = 0.3) +
+  geom_smooth(method = 'lm') +
+  scale_color_manual(values = c('#d55e00', '#3db7e9', '#f748a5', '#359b73')) +
+  labs(x = "Ln(time fed + 1)", y = "Residual of ln(brain size)", color = 'Developmental mode') +
+  theme_classic() +
+  theme(text = element_text(size = text_size, family = "Helvetica"),
+        axis.line = element_line(size = line_size, lineend = 'square'),
+        axis.ticks = element_line(size = line_size),
+        axis.ticks.length = tick_length,
+        legend.position = 'bottom')
+plot5
+ggsave(filename = "vis_alldevomode.pdf", device = "pdf", scale = 0.8)
+
+
+plot6.11 <- birds %>%
+  ggplot(aes(x = food_energy, y = fibres)) +
+  geom_point(size = 2, alpha = 0.3) +
+  geom_smooth(method = 'loess') +
+  labs(x = "Overall food energy content", y = "Fibres in food") +
+  theme_classic() +
+  theme(text = element_text(size = text_size, family = "Helvetica"),
+        axis.line = element_line(size = line_size, lineend = 'square'),
+        axis.ticks = element_line(size = line_size),
+        axis.ticks.length = tick_length,
+        legend.position = 'bottom')
+#plot6.11
+
+plot6.22 <- birds %>%
+  ggplot(aes(x = food_energy, y = food_h_level)) +
+  geom_point(size = 2, alpha = 0.3) +
+  geom_smooth(method = 'loess') +
+  labs(x = "Overall food energy content", y = "Food handling levels") +
+  theme_classic() +
+  theme(text = element_text(size = text_size, family = "Helvetica"),
+        axis.line = element_line(size = line_size, lineend = 'square'),
+        axis.ticks = element_line(size = line_size),
+        axis.ticks.length = tick_length,
+        legend.position = 'bottom')
+#plot6.22
+
+plot6.33 <- birds %>%
+  ggplot(aes(x = food_h_level, y = fibres)) +
+  geom_point(size = 2, alpha = 0.3) +
+  geom_smooth(method = 'loess') +
+  labs(x = "Food handling levels", y = "Fibres in food") +
+  theme_classic() +
+  theme(text = element_text(size = text_size, family = "Helvetica"),
+        axis.line = element_line(size = line_size, lineend = 'square'),
+        axis.ticks = element_line(size = line_size),
+        axis.ticks.length = tick_length,
+        legend.position = 'bottom')
+#plot6.33
+
+#ggarrange(plot6.11, plot6.33, plot6.22, nrow = 2, ncol = 2)
+
+# below we modify plot adding PCA arrows
+plot6.33 <- birds %>%
+  ggplot(aes(x = food_h_level, y = fibres)) +
+  geom_point(size = 2, alpha = 0.3) +
+  geom_smooth(method = 'loess') +
+  labs(x = "Food handling levels", y = "Fibres in food") +
+  theme_classic() +
+  theme(text = element_text(size = text_size, family = "Helvetica"),
+        axis.line = element_line(size = line_size, lineend = 'square'),
+        axis.ticks = element_line(size = line_size),
+        axis.ticks.length = tick_length,
+        legend.position = 'bottom')
+
+arr1 <- c(cor(birds$food_energy, birds$food_energy_RC) * 0.05 * sqrt(nrow(birds)-1))
+arr2 <- c(cor(birds$food_energy, birds$food_h_level_nofibres_RC) * 0.05 * sqrt(nrow(birds)-1))
+arr4 <- c(cor(birds$fibres, birds$food_energy_RC) * 0.05 * sqrt(nrow(birds)-1))
+arr3 <- c(cor(birds$fibres, birds$food_h_level_nofibres_RC) * 0.05 * sqrt(nrow(birds)-1))
+arr5 <- c(cor(birds$food_h_level, birds$food_energy_RC) * 0.05 * sqrt(nrow(birds)-1))
+arr6 <- c(cor(birds$food_h_level, birds$food_h_level_nofibres_RC) * 0.05 * sqrt(nrow(birds)-1))
+plot6.44 <- birds %>%
+  ggplot(aes(x = food_h_level_nofibres_RC, y = food_energy_RC)) +
+  geom_point(size = 2, alpha = 0.3, colour = 'red') +
+  geom_segment(aes(x=0, y=0, xend=arr1,yend=arr2), arrow = arrow(length = unit(10, 'pt'))) +
+  geom_segment(aes(x=0, y=0, xend=arr3,yend=arr4), arrow = arrow(length = unit(10, 'pt'))) +
+  geom_segment(aes(x=0, y=0, xend=arr5,yend=arr6), arrow = arrow(length = unit(10, 'pt'))) +
+  labs(x = "PC1", y = "PC2") +
+  geom_text(x = -2, y = 0.3, label = 'Fibres in food', hjust = 'left', lineheight = 1) +
+  geom_text(x = 0.1, y = 2.15, label = 'Overall food energy \ncontent', hjust = 'left', lineheight = 1) +
+  geom_text(x = 1.25, y = 0.85, label = 'Food handling \nlevels', hjust = 'left', lineheight = 1) +
+  theme_classic() +
+  theme(text = element_text(size = text_size, family = "Helvetica"),
+        axis.line = element_line(size = line_size, lineend = 'square'),
+        axis.ticks = element_line(size = line_size),
+        axis.ticks.length = tick_length,
+        legend.position = 'bottom')
+#plot6.44
+
+ggarrange(plot6.11, plot6.33, plot6.22, plot6.44, nrow = 2, ncol = 2, labels = 'auto')
+#ggsave(filename = 'vis_foodpca_2.pdf', device = 'pdf', scale = 0.8)
+```
+
+## 7. Produce final effects plots...
+
+With multi-tree estimates added. This plot uses linear model estimates from MCMCglmm and summary stats from multi-tree models pooling posteriors.
+
+In the first step we prepare the effects table, group estimates by rearranging them and singling-out mass effects, and sorting to the desired order.
+
+```{r, fig.dim = c(12, 10)}
+effects <- read.table("effects_estimates.csv", sep = ";", head = T, stringsAsFactors = T)
+
+labels_alloc <- rev(as.character(subset(effects, set == "parental provisioning")$term))
+names(labels_alloc) <- labels_alloc
+labels_alloc <- labels_alloc[-which(labels_alloc == "mass")]
+labels_esoc <- rev(as.character(subset(effects, set == "ecosocial")$term))
+names(labels_esoc) <- labels_esoc
+labels_esoc <- labels_esoc[-which(labels_esoc == "mass")]
+labels_comb <- rev(as.character(subset(effects, set == "combined")$term))
+names(labels_comb) <- labels_comb
+labels_comb <- labels_comb[-which(labels_comb == "mass")]
+
+allcomb <- which(labels_comb %in% labels_alloc)
+escomb <- which(labels_comb %in% labels_esoc)
+
+final_labels <- rev(c("mass", rev(labels_alloc), rev(labels_esoc), rev(labels_comb[-c(allcomb, escomb)])))
+names(final_labels) <- NULL
+final_labels
+length(final_labels)
+```
+
+The main plot is only defines base aesthetics mappings.
+```{r, fig.dim = c(12, 10)}
+p <- ggplot(data = subset(effects),
+            aes(x = estimate, y = term, xmin = lower_CI, xmax = upper_CI))
+```
+
+Then we add points, error bars, each time defining custom colour and shape scales.
+```{r, fig.dim = c(12, 10)}
+
+p4 <- p + geom_vline(xintercept = 0, colour = 'gray90', linetype = 2) +
+  geom_errorbarh(height = 0, lwd = 0.75) +
+  geom_point(aes(fill = type), size = 2.5, colour = "black", pch = 21, stroke = 1) + theme_classic() +
+  scale_y_discrete(limits = final_labels, expand = expansion(add = 0.8)) +
+  scale_fill_manual(values = c("#00d302",  "#ff3cfe", "#ffac3b", "#00c2f9")) +
+  theme(axis.line.y = element_blank(), panel.grid.major.y = element_line(size = 0.5),
+        text = element_text(size = 15, colour = 'black'),
+        axis.title.y = element_blank(),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "gray90", linetype = 0)) +
+  xlab("Effect stimate") + labs(shape = "Fraction p < 0.05", fill = "Predictor set") +
+  facet_grid(cols = vars(factor(set, levels = c("parental provisioning", "ecosocial", "combined")))) +
+  geom_point(aes(x = estmulti, y = term, shape = f_cat, colour = type), size = 2,
+             stroke = 1, position = position_nudge(y = -0.40)) +
+  scale_shape_manual(values = c(20,3,8), labels = c("<5%", "5%-99%", ">99%")) +
+  scale_colour_manual(values = c("#afff2a",  "#ff92fd", "#ffdc3d", "#7cfffa"), guide = F)
+
+p4
+# ggsave("vis_coefall_210302_2", device = "pdf", scale = 0.7)
+```
