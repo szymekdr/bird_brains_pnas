@@ -18,7 +18,9 @@ require (GPArotation)
 require (gdata)
 
 # main data set
-birds <- read.table("data_set_final_210225.csv", stringsAsFactors = T, header = T, sep = ";")
+birds <- read.table("./analyses_new/analysis_reboot/220501_all_species_corrected.csv",
+  stringsAsFactors = T, header = T, sep = ";"
+)
 #birds <- read.table("set_5.csv", stringsAsFactors = T, header = T, sep = ";")
 #birds2 <- read.table("set_2.txt", stringsAsFactors = T, header = T, sep = "\t")
 
@@ -83,7 +85,7 @@ birds %<>%
                 # clutch_size_c,
                 # time_fed_c,
                 # weight_c,
-                Prum_order,
+                PrumOrder,
                 #family,
                 grouping
                 
@@ -95,7 +97,7 @@ birds <- birds[complete.cases(birds),]
 
 #phylo tree####
 
-Jetz.tree <- read.nexus("Jetztree1.nex")
+Jetz.tree <- read.nexus("./analyses_new/analysis_reboot/Jetztree1.nex")
 matches<-match(Jetz.tree$tip.label, birds$tip_label, nomatch=0)
 not<-subset(Jetz.tree$tip.label, matches==0)
 birdtree.Jetz<-drop.tip(Jetz.tree, not)

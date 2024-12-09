@@ -17,29 +17,12 @@ knitr::opts_chunk$set(echo = TRUE)
 rm(list = ls())
 # setwd
 
-require(phylolm)
-require(ape)
-require(caper)
-require(geiger)  
-require(phylopath)
-# require(gmm)
-require(lme4)
-require(magrittr)
-require(dplyr)
-require(ggplot2)
-require(MuMIn)
-require (VIF)
-require(ggpubr)
-library(ggrepel)
-
-require(MCMCglmm)
-
-library(asreml)
-
-library(ggtree)
-library(ggtreeExtra)
-library(ggnewscale)
-library(RColorBrewer)
+pacman::p_load(
+  phylolm, ape, caper, geiger, phylopath,
+  lme4, magrittr, dplyr, ggplot2, MuMIn,
+  ggpubr, ggrepel, MCMCglmm, asreml, ggtree,
+  ggtreeExtra, ggnewscale, RColorBrewer, plotly
+)
 ```
 
 ## 2. Load data (using external scripts)
@@ -47,9 +30,9 @@ library(RColorBrewer)
 The below code loads the comparative brain data, associated moderators and performs robust PCA analysis of climatic variables. In the last step rename rows of the data to species IDs. The plots produced in the process are parts of the data summarising process, mostly summaries of PC components rotations. *Note: this step can be bypassed by loading the `.Rdata` file containing the image of workspace, point (4) below.*
 
 ```{r, message = F}
-source(file = 'data_load_plotting.R')
+source(file = './analyses_new/analysis_reboot/data_load_plotting.R')
 phylo_vcv <- vcv.phylo(birdtree.Jetz, corr = T)
-source('climatic.R')
+# source('climatic.R')
 rownames(birds) <- birds$tip_label
 ```
 
@@ -84,8 +67,8 @@ Define colour palette to colour the terminal branches according to Prum et al.'s
 set3 <- colorRampPalette((brewer.pal('Set3', n = 12)))
 
 # assign taxonomic orders to colours + assign internal nodes (no data) to gray
-colours <- c(setNames(set3(15), levels(birds$Prum_order)), Internal = "gray50")
-orders <- colours[c(as.character(birds[tree_final$tip.label, "Prum_order"]),
+colours <- c(setNames(set3(15), levels(birds$PrumOrder)), Internal = "gray50")
+orders <- colours[c(as.character(birds[tree_final$tip.label, "PrumOrder"]),
             rep("Internal", 1174))]
 ```
 
@@ -97,7 +80,8 @@ p <- ggtree(tree_final, layout = "circular", color = orders)
 
 # add tree data and tip points
 p <- p %<+% birds + new_scale("color") +
-  scale_color_manual(values = c("cornflowerblue", "darkorange"), name = "Development mode") +
+  scale_color_manual(values = c("cornflowerblue", "darkorange"),
+  name = "Development mode") +
   geom_tippoint(aes(color = devo_mode), size = 0.5)
 ```
 
@@ -105,13 +89,20 @@ Add bar plots of circularly generated data depicting residual brain size and bod
 ```{r, out.width = "800 px"}
 
 # add bars representing residual brain size coloured by time of feeding and body weight
-p1 <- p + geom_fruit(geom = geom_bar, 
-                     mapping = aes(x = res_brain, fill = time_fed),
-                     axis.params = list(axis = "x"),
-                     stat = 'identity', orientation = 'y', offset = 0.15) +
-  geom_fruit(geom = geom_bar, mapping = aes(x = weight), axis.params = list(axis = "x"),
-             stat = 'identity', orientation = 'y', offset = -0.01, fill = "gray74") +
-  scale_fill_gradientn(colors = c('limegreen', 'gold', 'maroon2'), name = "Time fed [log days]")
+p1 <- p + geom_fruit(
+  geom = geom_bar,
+  mapping = aes(x = res_brain, fill = time_fed),
+  axis.params = list(axis = "x"),
+  stat = "identity", orientation = "y", offset = 0.15
+) +
+  geom_fruit(
+    geom = geom_bar, mapping = aes(x = weight), axis.params = list(axis = "x"),
+    stat = "identity", orientation = "y", offset = -0.01, fill = "gray74"
+  ) +
+  scale_fill_gradientn(
+    colors = c("limegreen", "gold", "maroon2"),
+    name = "Time fed [log days]"
+  )
 
 plot(p1)
 # the code below saves the PDF

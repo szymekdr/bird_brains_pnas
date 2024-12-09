@@ -11,7 +11,7 @@ require (GPArotation)
 
 #load climatic data
 
-bioclim <- read.table('201103_birds_gbd_bioclim_complete_vars.csv', sep = ';', header = T)
+bioclim <- read.table('./analyses_new/analysis_reboot/201103_birds_gbd_bioclim_complete_vars.csv', sep = ';', header = T)
 
 ev <- eigen(cor(bioclim)) # get eigenEstimates
 ap <- parallel(subject=nrow(na.omit(bioclim)),var=ncol(na.omit(bioclim)),
